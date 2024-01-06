@@ -18,6 +18,7 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <bluetooth/scan.h>
+#include <bluetooth/gatt_dm.h>
 #include <zephyr/sys/byteorder.h>
 
 static void start_scan(void);
@@ -64,8 +65,6 @@ void scan_filter_match(struct bt_scan_device_info *device_info,
 
 	bt_data_parse(device_info->adv_data, ad_decode, NULL);
 
-	return;
-
 	if (bt_le_scan_stop()) {
 		return;
 	}
@@ -107,6 +106,51 @@ static void start_scan(void)
 	printk("Scanning successfully started\n");
 }
 
+static void discover_all_completed(struct bt_gatt_dm *dm, void *ctx)
+{
+	char uuid_str[37];
+	struct bt_conn *conn = bt_gatt_dm_conn_get(dm);
+
+	const struct bt_gatt_dm_attr *gatt_service_attr =
+			bt_gatt_dm_service_get(dm);
+	const struct bt_gatt_service_val *gatt_service =
+			bt_gatt_dm_attr_service_val(gatt_service_attr);
+
+	size_t attr_count = bt_gatt_dm_attr_cnt(dm);
+
+	bt_uuid_to_str(gatt_service->uuid, uuid_str, sizeof(uuid_str));
+	printk("Found service %s\n", uuid_str);
+	printk("Attribute count: %d\n", attr_count);
+
+	bt_gatt_dm_data_print(dm);
+
+	struct bt_gatt_subscribe_params sub_params = {
+		
+	};
+
+	bt_gatt_subscribe(bt_gatt_dm_conn_get(dm), &sub_params);
+
+	bt_gatt_dm_data_release(dm);
+
+	bt_gatt_dm_continue(dm, NULL);
+}
+
+static void discover_all_service_not_found(struct bt_conn *conn, void *ctx)
+{
+	printk("No more services\n");
+}
+
+static void discover_all_error_found(struct bt_conn *conn, int err, void *ctx)
+{
+	printk("The discovery procedure failed, err %d\n", err);
+}
+
+static struct bt_gatt_dm_cb discover_all_cb = {
+	.completed = discover_all_completed,
+	.service_not_found = discover_all_service_not_found,
+	.error_found = discover_all_error_found,
+};
+
 static void connected(struct bt_conn *conn, uint8_t err)
 {
 	char addr[BT_ADDR_LE_STR_LEN];
@@ -129,7 +173,12 @@ static void connected(struct bt_conn *conn, uint8_t err)
 
 	printk("Connected: %s\n", addr);
 
-	bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+	err = bt_gatt_dm_start(conn, UUID_SLIME_VR, &discover_all_cb, NULL);
+	if (err) {
+		printk("Failed to start discovery (err %d)\n", err);
+	}
+
+	// bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
