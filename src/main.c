@@ -110,16 +110,31 @@ static void start_scan(void)
 	printk("Scanning successfully started\n");
 }
 
+uint64_t count_messages = 0;
+int64_t timer = 0;
+
 static uint8_t on_received(struct bt_conn *conn,
 			struct bt_gatt_subscribe_params *params,
 			const void *data, uint16_t length)
 {
-	uint8_t *data_ptr = (uint8_t *) data;
-	for(int i = 0; i < length; i++)
+	count_messages++;
+
+	if(k_uptime_get() <= timer + 1000)
 	{
-		printk("%x", data_ptr[i]);
+		return BT_GATT_ITER_CONTINUE;
 	}
-	printk("\n");
+
+	timer = k_uptime_get();
+	printk("Messages: %lli\n", count_messages);
+	printk("Current message length: %u\n", length);
+	count_messages = 0;
+
+	// uint8_t *data_ptr = (uint8_t *) data;
+	// for(int i = 0; i < length; i++)
+	// {
+	// 	printk("%x", data_ptr[i]);
+	// }
+	// printk("\n");
 
 	return BT_GATT_ITER_CONTINUE;
 }
@@ -240,6 +255,25 @@ static struct bt_gatt_dm_cb discover_all_cb = {
 	.error_found = discover_all_error_found,
 };
 
+void mtu_exchange_func(struct bt_conn *conn, uint8_t err,
+		     struct bt_gatt_exchange_params *params)
+{
+	printk("MTU Exchanged: %d\n", err);
+
+	printk("MTU: %u\n", bt_gatt_get_mtu(conn));
+}
+
+struct bt_gatt_exchange_params exchange_params = {
+		.func = mtu_exchange_func
+};
+
+struct bt_le_conn_param conn_param = {
+	.interval_max = 6,
+	.interval_min = 6,
+	.latency = 0,
+	.timeout = 200
+};
+
 static void connected(struct bt_conn *conn, uint8_t err)
 {
 	char addr[BT_ADDR_LE_STR_LEN];
@@ -261,6 +295,14 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	}
 
 	printk("Connected: %s\n", addr);
+
+	bt_gatt_exchange_mtu(conn, &exchange_params);
+
+	printk("Updated phy?: %d\n", bt_conn_le_phy_update(conn, BT_CONN_LE_PHY_PARAM_2M));
+
+	printk("Updated params?: %d\n", bt_conn_le_param_update(conn, &conn_param));
+
+	printk("Updated len?: %d\n", bt_conn_le_data_len_update(conn, BT_LE_DATA_LEN_PARAM_MAX));
 
 	err = bt_gatt_dm_start(conn, UUID_SLIME_VR, &discover_all_cb, NULL);
 	if (err) {
