@@ -28,11 +28,6 @@ static void start_scan(void);
 #define UUID_SLIME_VR_CHR_VAL BT_UUID_128_ENCODE(0x6fd1aa9d, 0xd1da, 0xca9f, 0x144b, 0x8118aaae7c9d)
 #define UUID_SLIME_VR_CHR BT_UUID_DECLARE_128(UUID_SLIME_VR_CHR_VAL)
 
-struct connections {
-	char addr[BT_ADDR_STR_LEN];
-	struct bt_conn *connection;
-} current_connections[16];
-
 static struct bt_conn *default_conn;
 
 int slimevr_send(struct bt_conn *conn, const uint8_t *data, uint16_t length);
