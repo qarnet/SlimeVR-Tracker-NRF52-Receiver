@@ -21,9 +21,6 @@
 #include <bluetooth/gatt_dm.h>
 #include <zephyr/sys/byteorder.h>
 
-#include "connectionManagement.h"
-#include "connectionManagement.hpp"
-
 static void start_scan(void);
 
 #define UUID_SLIME_VR_VAL BT_UUID_128_ENCODE(0x677abafc, 0x4bd7, 0xcfa8, 0x014e, 0xbb1444f02608)
