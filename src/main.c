@@ -97,10 +97,12 @@ void scan_filter_match(struct bt_scan_device_info *device_info,
 
 BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);
 
+bool already_scanning = false;
+
 static void start_scan(void)
 {
+	printk("Entry\n");
 	int err;
-	static bool already_scanning = false;
 
 	if(already_scanning)
 	{
@@ -121,7 +123,16 @@ static void start_scan(void)
 
 static bool stop_scan()
 {
-	return bt_le_scan_stop();
+	bool err = bt_le_scan_stop();
+
+	if(err)
+	{
+		return err;
+	}
+
+	already_scanning = false;
+
+	return err;
 }
 
 uint64_t count_messages = 0;
@@ -141,6 +152,9 @@ static uint8_t on_received(struct bt_conn *conn,
 	timer = k_uptime_get();
 	printk("Messages: %lli\n", count_messages);
 	printk("Current message length: %u\n", length);
+	char addr[BT_ADDR_LE_STR_LEN];
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, BT_ADDR_LE_STR_LEN);
+	printk("Current device: %s\n", addr);
 	count_messages = 0;
 
 	// uint8_t *data_ptr = (uint8_t *) data;
