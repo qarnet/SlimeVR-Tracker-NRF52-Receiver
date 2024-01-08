@@ -23,8 +23,10 @@
 
 static void start_scan(void);
 
-#define UUID_SLIME_VR BT_UUID_DECLARE_128(BT_UUID_128_ENCODE(0x677abafc, 0x4bd7, 0xcfa8, 0x014e, 0xbb1444f02608))
-#define UUID_SLIME_VR_CHR BT_UUID_DECLARE_128(BT_UUID_128_ENCODE(0x6fd1aa9d, 0xd1da, 0xca9f, 0x144b, 0x8118aaae7c9d));
+#define UUID_SLIME_VR_VAL BT_UUID_128_ENCODE(0x677abafc, 0x4bd7, 0xcfa8, 0x014e, 0xbb1444f02608)
+#define UUID_SLIME_VR BT_UUID_DECLARE_128(UUID_SLIME_VR_VAL)
+#define UUID_SLIME_VR_CHR_VAL BT_UUID_128_ENCODE(0x6fd1aa9d, 0xd1da, 0xca9f, 0x144b, 0x8118aaae7c9d)
+#define UUID_SLIME_VR_CHR BT_UUID_DECLARE_128(UUID_SLIME_VR_CHR_VAL)
 
 static struct bt_conn *default_conn;
 
@@ -106,6 +108,59 @@ static void start_scan(void)
 	printk("Scanning successfully started\n");
 }
 
+static uint8_t on_received(struct bt_conn *conn,
+			struct bt_gatt_subscribe_params *params,
+			const void *data, uint16_t length)
+{
+	printk("NOTIFY\n");
+
+	return BT_GATT_ITER_CONTINUE;
+}
+
+uint16_t write_handle;
+
+int slimevr_handles_get(struct bt_gatt_dm *dm)
+{
+	char uuid_str[37];
+
+	const struct bt_gatt_dm_attr *gatt_chrc_attr = 
+		bt_gatt_dm_char_by_uuid(dm, UUID_SLIME_VR_CHR);
+	const struct bt_gatt_chrc *gatt_chrc = 
+		bt_gatt_dm_attr_chrc_val(gatt_chrc_attr);
+	
+	write_handle = gatt_chrc->value_handle;
+
+	bt_uuid_to_str(gatt_chrc->uuid, uuid_str, sizeof(uuid_str));
+	printk("CHRC: %s\n", uuid_str);
+
+	return 0;
+}
+
+struct bt_gatt_subscribe_params sub_params;
+volatile bool subscribed = false;
+
+int slimevr_subscribe(struct bt_gatt_dm *dm)
+{
+	const struct bt_gatt_dm_attr *gatt_chrc_attr = 
+		bt_gatt_dm_char_by_uuid(dm, UUID_SLIME_VR_CHR);
+	
+	const struct bt_gatt_dm_attr *gatt_desc;
+
+	gatt_desc = bt_gatt_dm_desc_by_uuid(dm, gatt_chrc_attr, UUID_SLIME_VR_CHR);
+
+	sub_params.notify = on_received;
+	sub_params.value = BT_GATT_CCC_NOTIFY;
+	sub_params.value_handle = gatt_desc->handle;
+
+	gatt_desc = bt_gatt_dm_desc_by_uuid(dm, gatt_chrc_attr, BT_UUID_GATT_CCC);
+
+	sub_params.ccc_handle = gatt_desc->handle;
+
+	subscribed = true;
+
+	return bt_gatt_subscribe(bt_gatt_dm_conn_get(dm), &sub_params);
+}
+
 static void discover_all_completed(struct bt_gatt_dm *dm, void *ctx)
 {
 	char uuid_str[37];
@@ -122,17 +177,29 @@ static void discover_all_completed(struct bt_gatt_dm *dm, void *ctx)
 	printk("Found service %s\n", uuid_str);
 	printk("Attribute count: %d\n", attr_count);
 
+	slimevr_handles_get(dm);
+	printk("1");
+	slimevr_subscribe(dm);
+	printk("2");
 	bt_gatt_dm_data_print(dm);
-
-	struct bt_gatt_subscribe_params sub_params = {
-		
-	};
-
-	bt_gatt_subscribe(bt_gatt_dm_conn_get(dm), &sub_params);
-
+	printk("3");
 	bt_gatt_dm_data_release(dm);
-
+	printk("4");
 	bt_gatt_dm_continue(dm, NULL);
+	printk("5");
+}
+
+struct bt_gatt_write_params write_params;
+
+int slimevr_send(const uint8_t *data, uint16_t length)
+{
+	write_params.func = NULL;
+	write_params.handle = write_handle;
+	write_params.offset = 0;
+	write_params.data = data;
+	write_params.length = length;
+
+	return bt_gatt_write(default_conn, &write_params);
 }
 
 static void discover_all_service_not_found(struct bt_conn *conn, void *ctx)
@@ -177,8 +244,6 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	if (err) {
 		printk("Failed to start discovery (err %d)\n", err);
 	}
-
-	// bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
@@ -217,5 +282,10 @@ int main(void)
 	printk("Bluetooth initialized\n");
 
 	start_scan();
+
+	// while(true)
+	// {
+	// 	if(subscribed == true);
+	// }
 	return 0;
 }
