@@ -103,7 +103,6 @@ bool already_scanning = false;
 
 static void start_scan(void)
 {
-	printk("Entry\n");
 	int err;
 
 	if(already_scanning)
@@ -144,7 +143,8 @@ static uint8_t on_received(struct bt_conn *conn,
 			struct bt_gatt_subscribe_params *params,
 			const void *data, uint16_t length)
 {
-	count_messages++;
+	int index = cm_get_index_with_conn(&connections, conn);
+	connections.entry[index].debug_counter++;
 
 	if(k_uptime_get() <= timer + 1000)
 	{
@@ -152,12 +152,19 @@ static uint8_t on_received(struct bt_conn *conn,
 	}
 
 	timer = k_uptime_get();
-	printk("Messages: %lli\n", count_messages);
-	printk("Current message length: %u\n", length);
-	char addr[BT_ADDR_LE_STR_LEN];
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, BT_ADDR_LE_STR_LEN);
-	printk("Current device: %s\n", addr);
-	count_messages = 0;
+	printk("=======================================\n");
+	for(int i = 0; i < connections.size; i++)
+	{
+		if(connections.entry[i].connection == NULL)
+		{
+			continue;
+		}
+
+		printk("Messages from (%s): %llu\n", connections.entry[i].addr, connections.entry[i].debug_counter);
+		connections.entry[i].debug_counter = 0;
+	}
+	printk("=======================================\n");
+
 
 	// uint8_t *data_ptr = (uint8_t *) data;
 	// for(int i = 0; i < length; i++)
@@ -168,8 +175,6 @@ static uint8_t on_received(struct bt_conn *conn,
 
 	return BT_GATT_ITER_CONTINUE;
 }
-
-uint16_t write_handle;
 
 int slimevr_handles_get(struct bt_gatt_dm *dm)
 {
@@ -184,7 +189,7 @@ int slimevr_handles_get(struct bt_gatt_dm *dm)
 	bt_addr_le_to_str(bt_conn_get_dst(bt_gatt_dm_conn_get(dm)), addr, ADDR_LEN);
 	int index = cm_get_index_with_addr(&connections, addr);
 
-	connections.entry[index].write_handle = gatt_chrc->value_handle;
+	connections.entry[index].write_params.handle = gatt_chrc->value_handle;
 
 	// bt_uuid_to_str(gatt_chrc->uuid, uuid_str, sizeof(uuid_str));
 	// printk("CHRC: %s\n", uuid_str);
@@ -205,10 +210,6 @@ void on_subscribed(struct bt_conn *conn, uint8_t err,
 	memcpy(handshake + 1, handshake_part, sizeof(handshake_part));
 
 	slimevr_send(conn, (const uint8_t *)handshake, sizeof(handshake));
-
-	k_msleep(1000);
-
-	start_scan();
 }
 
 int slimevr_subscribe(struct bt_gatt_dm *dm)
@@ -259,24 +260,23 @@ static void discover_all_completed(struct bt_gatt_dm *dm, void *ctx)
 	bt_gatt_dm_continue(dm, NULL);
 }
 
-struct bt_gatt_write_params write_params;
 void on_write(struct bt_conn *conn, uint8_t err,
 				     struct bt_gatt_write_params *params)
 {
 	printk("Written\n");
+	start_scan();
 }
 
 int slimevr_send(struct bt_conn *conn, const uint8_t *data, uint16_t length)
 {
 	int index = cm_get_index_with_conn(&connections, conn);
 
-	write_params.func = on_write;
-	write_params.handle = connections.entry[index].write_handle;
-	write_params.offset = 0;
-	write_params.data = data;
-	write_params.length = length;
+	connections.entry[index].write_params.func = on_write;
+	connections.entry[index].write_params.offset = 0;
+	connections.entry[index].write_params.data = data;
+	connections.entry[index].write_params.length = length;
 
-	return bt_gatt_write(conn, &write_params);
+	return bt_gatt_write(conn, &connections.entry[index].write_params);
 }
 
 static void discover_all_service_not_found(struct bt_conn *conn, void *ctx)

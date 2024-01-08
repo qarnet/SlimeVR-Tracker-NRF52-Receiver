@@ -8,7 +8,8 @@ typedef struct {
     char addr[BT_ADDR_LE_STR_LEN];
 	struct bt_conn *connection;
     struct bt_gatt_subscribe_params sub_params;
-    uint16_t write_handle;
+    struct bt_gatt_write_params write_params;
+    uint64_t debug_counter;
 } connection_entry;
 
 typedef struct {
