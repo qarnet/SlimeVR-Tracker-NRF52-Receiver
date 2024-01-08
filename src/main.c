@@ -30,6 +30,8 @@ static void start_scan(void);
 
 static struct bt_conn *default_conn;
 
+int slimevr_send(const uint8_t *data, uint16_t length);
+
 bool ad_decode(struct bt_data *data, void *user_data)
 {
 	switch(data->type)
@@ -112,7 +114,12 @@ static uint8_t on_received(struct bt_conn *conn,
 			struct bt_gatt_subscribe_params *params,
 			const void *data, uint16_t length)
 {
-	printk("NOTIFY\n");
+	uint8_t *data_ptr = (uint8_t *) data;
+	for(int i = 0; i < length; i++)
+	{
+		printk("%x", data_ptr[i]);
+	}
+	printk("\n");
 
 	return BT_GATT_ITER_CONTINUE;
 }
@@ -139,8 +146,27 @@ int slimevr_handles_get(struct bt_gatt_dm *dm)
 struct bt_gatt_subscribe_params sub_params;
 volatile bool subscribed = false;
 
+void on_subscribed(struct bt_conn *conn, uint8_t err,
+					 struct bt_gatt_subscribe_params *params)
+{
+	subscribed = true;
+
+	char handshake_part[] = "Hey OVR =D 5";
+
+	char handshake[sizeof(handshake_part) + 1];
+
+	handshake[0] = 3;
+	memcpy(handshake + 1, handshake_part, sizeof(handshake_part));
+
+	slimevr_send(handshake, sizeof(handshake));
+}
+
 int slimevr_subscribe(struct bt_gatt_dm *dm)
 {
+	sub_params.subscribe = on_subscribed;
+	sub_params.notify = on_received;
+	sub_params.value = BT_GATT_CCC_NOTIFY;
+
 	const struct bt_gatt_dm_attr *gatt_chrc_attr = 
 		bt_gatt_dm_char_by_uuid(dm, UUID_SLIME_VR_CHR);
 	
@@ -148,15 +174,11 @@ int slimevr_subscribe(struct bt_gatt_dm *dm)
 
 	gatt_desc = bt_gatt_dm_desc_by_uuid(dm, gatt_chrc_attr, UUID_SLIME_VR_CHR);
 
-	sub_params.notify = on_received;
-	sub_params.value = BT_GATT_CCC_NOTIFY;
 	sub_params.value_handle = gatt_desc->handle;
 
 	gatt_desc = bt_gatt_dm_desc_by_uuid(dm, gatt_chrc_attr, BT_UUID_GATT_CCC);
 
 	sub_params.ccc_handle = gatt_desc->handle;
-
-	subscribed = true;
 
 	return bt_gatt_subscribe(bt_gatt_dm_conn_get(dm), &sub_params);
 }
@@ -178,22 +200,22 @@ static void discover_all_completed(struct bt_gatt_dm *dm, void *ctx)
 	printk("Attribute count: %d\n", attr_count);
 
 	slimevr_handles_get(dm);
-	printk("1");
 	slimevr_subscribe(dm);
-	printk("2");
-	bt_gatt_dm_data_print(dm);
-	printk("3");
+	// bt_gatt_dm_data_print(dm);
 	bt_gatt_dm_data_release(dm);
-	printk("4");
 	bt_gatt_dm_continue(dm, NULL);
-	printk("5");
 }
 
 struct bt_gatt_write_params write_params;
+void on_write(struct bt_conn *conn, uint8_t err,
+				     struct bt_gatt_write_params *params)
+{
+	printk("Written\n");
+}
 
 int slimevr_send(const uint8_t *data, uint16_t length)
 {
-	write_params.func = NULL;
+	write_params.func = on_write;
 	write_params.handle = write_handle;
 	write_params.offset = 0;
 	write_params.data = data;
