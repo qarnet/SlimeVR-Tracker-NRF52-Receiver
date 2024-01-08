@@ -23,6 +23,8 @@
 
 #include "connectionManager.h"
 
+#define ADDR_LEN BT_ADDR_LE_STR_LEN
+
 static void start_scan(void);
 static bool stop_scan();
 
@@ -171,29 +173,30 @@ uint16_t write_handle;
 
 int slimevr_handles_get(struct bt_gatt_dm *dm)
 {
-	char uuid_str[37];
+	// char uuid_str[37];
 
 	const struct bt_gatt_dm_attr *gatt_chrc_attr = 
 		bt_gatt_dm_char_by_uuid(dm, UUID_SLIME_VR_CHR);
 	const struct bt_gatt_chrc *gatt_chrc = 
 		bt_gatt_dm_attr_chrc_val(gatt_chrc_attr);
 	
-	write_handle = gatt_chrc->value_handle;
+	char addr[ADDR_LEN];
+	bt_addr_le_to_str(bt_conn_get_dst(bt_gatt_dm_conn_get(dm)), addr, ADDR_LEN);
+	int index = cm_get_index_with_addr(&connections, addr);
 
-	bt_uuid_to_str(gatt_chrc->uuid, uuid_str, sizeof(uuid_str));
-	printk("CHRC: %s\n", uuid_str);
+	connections.entry[index].write_handle = gatt_chrc->value_handle;
+
+	// bt_uuid_to_str(gatt_chrc->uuid, uuid_str, sizeof(uuid_str));
+	// printk("CHRC: %s\n", uuid_str);
 
 	return 0;
 }
 
 struct bt_gatt_subscribe_params sub_params;
-volatile bool subscribed = false;
 
 void on_subscribed(struct bt_conn *conn, uint8_t err,
 					 struct bt_gatt_subscribe_params *params)
 {
-	subscribed = true;
-
 	char handshake_part[] = "Hey OVR =D 5";
 
 	char handshake[sizeof(handshake_part) + 1];
@@ -210,9 +213,13 @@ void on_subscribed(struct bt_conn *conn, uint8_t err,
 
 int slimevr_subscribe(struct bt_gatt_dm *dm)
 {
-	sub_params.subscribe = on_subscribed;
-	sub_params.notify = on_received;
-	sub_params.value = BT_GATT_CCC_NOTIFY;
+	char addr[ADDR_LEN];
+	bt_addr_le_to_str(bt_conn_get_dst(bt_gatt_dm_conn_get(dm)), addr, ADDR_LEN);
+	int index = cm_get_index_with_addr(&connections, addr);
+	
+	connections.entry[index].sub_params.subscribe = on_subscribed;
+	connections.entry[index].sub_params.notify = on_received;
+	connections.entry[index].sub_params.value = BT_GATT_CCC_NOTIFY;
 
 	const struct bt_gatt_dm_attr *gatt_chrc_attr = 
 		bt_gatt_dm_char_by_uuid(dm, UUID_SLIME_VR_CHR);
@@ -221,19 +228,18 @@ int slimevr_subscribe(struct bt_gatt_dm *dm)
 
 	gatt_desc = bt_gatt_dm_desc_by_uuid(dm, gatt_chrc_attr, UUID_SLIME_VR_CHR);
 
-	sub_params.value_handle = gatt_desc->handle;
+	connections.entry[index].sub_params.value_handle = gatt_desc->handle;
 
 	gatt_desc = bt_gatt_dm_desc_by_uuid(dm, gatt_chrc_attr, BT_UUID_GATT_CCC);
 
-	sub_params.ccc_handle = gatt_desc->handle;
+	connections.entry[index].sub_params.ccc_handle = gatt_desc->handle;
 
-	return bt_gatt_subscribe(bt_gatt_dm_conn_get(dm), &sub_params);
+	return bt_gatt_subscribe(bt_gatt_dm_conn_get(dm), &connections.entry[index].sub_params);
 }
 
 static void discover_all_completed(struct bt_gatt_dm *dm, void *ctx)
 {
 	char uuid_str[37];
-	struct bt_conn *conn = bt_gatt_dm_conn_get(dm);
 
 	const struct bt_gatt_dm_attr *gatt_service_attr =
 			bt_gatt_dm_service_get(dm);
@@ -262,8 +268,10 @@ void on_write(struct bt_conn *conn, uint8_t err,
 
 int slimevr_send(struct bt_conn *conn, const uint8_t *data, uint16_t length)
 {
+	int index = cm_get_index_with_conn(&connections, conn);
+
 	write_params.func = on_write;
-	write_params.handle = write_handle;
+	write_params.handle = connections.entry[index].write_handle;
 	write_params.offset = 0;
 	write_params.data = data;
 	write_params.length = length;

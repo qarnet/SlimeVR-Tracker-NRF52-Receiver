@@ -66,3 +66,19 @@ int cm_get_index_with_addr(connection_map *cm, char addr[BT_ADDR_LE_STR_LEN])
 
     return -1;
 }
+
+int cm_get_index_with_conn(connection_map *cm, struct bt_conn *conn)
+{
+    char addr[BT_ADDR_LE_STR_LEN];
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, BT_ADDR_LE_STR_LEN);
+
+    for(int i = 0; i < cm->size; i++)
+    {
+        if(strcmp(addr, cm->entry[i].addr) == 0)
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
