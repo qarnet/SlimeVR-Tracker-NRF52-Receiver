@@ -6,6 +6,8 @@ project(slimevr-central)
 
 target_sources(app PRIVATE
   src/main.c
+  src/connectionManagement.c
+  src/connectionManagement.cpp
 )
 
 zephyr_library_include_directories(${ZEPHYR_BASE}/samples/bluetooth)
