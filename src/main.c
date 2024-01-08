@@ -21,14 +21,19 @@
 #include <bluetooth/gatt_dm.h>
 #include <zephyr/sys/byteorder.h>
 
+#include "connectionManager.h"
+
 static void start_scan(void);
+static bool stop_scan();
 
 #define UUID_SLIME_VR_VAL BT_UUID_128_ENCODE(0x677abafc, 0x4bd7, 0xcfa8, 0x014e, 0xbb1444f02608)
 #define UUID_SLIME_VR BT_UUID_DECLARE_128(UUID_SLIME_VR_VAL)
 #define UUID_SLIME_VR_CHR_VAL BT_UUID_128_ENCODE(0x6fd1aa9d, 0xd1da, 0xca9f, 0x144b, 0x8118aaae7c9d)
 #define UUID_SLIME_VR_CHR BT_UUID_DECLARE_128(UUID_SLIME_VR_CHR_VAL)
 
-static struct bt_conn *default_conn;
+CONNECTION_MAP_INIT(connections, 16)
+
+int current_connection_index = -1;
 
 int slimevr_send(struct bt_conn *conn, const uint8_t *data, uint16_t length);
 
@@ -60,7 +65,9 @@ void scan_filter_match(struct bt_scan_device_info *device_info,
 	char addr_str[BT_ADDR_LE_STR_LEN];
 	int err;
 
-	if (default_conn) {
+	if(cm_get_next_free_object_index(&connections) < 0)
+	{
+		printk("Too many devices connected\n");
 		return;
 	}
 
@@ -69,12 +76,19 @@ void scan_filter_match(struct bt_scan_device_info *device_info,
 
 	bt_data_parse(device_info->adv_data, ad_decode, NULL);
 
-	if (bt_le_scan_stop()) {
+	if (stop_scan()) {
 		return;
 	}
 
+	current_connection_index = cm_get_next_free_object_index(&connections);
+	if(current_connection_index < 0)
+	{
+		return;
+	}
+
+	memcpy(connections.entry[current_connection_index].addr, addr_str, BT_ADDR_LE_STR_LEN); 
 	err = bt_conn_le_create(device_info->recv_info->addr, BT_CONN_LE_CREATE_CONN,
-				BT_LE_CONN_PARAM_DEFAULT, &default_conn);
+				BT_LE_CONN_PARAM_DEFAULT, &connections.entry[current_connection_index].connection);
 	if (err) {
 		printk("Create conn to %s failed (%d)\n", addr_str, err);
 		start_scan();
@@ -86,6 +100,12 @@ BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);
 static void start_scan(void)
 {
 	int err;
+	static bool already_scanning = false;
+
+	if(already_scanning)
+	{
+		return;
+	}
 
 	/* This demo doesn't require active scan */
 	err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, NULL);
@@ -95,6 +115,13 @@ static void start_scan(void)
 	}
 
 	printk("Scanning successfully started\n");
+
+	already_scanning = true;
+}
+
+static bool stop_scan()
+{
+	return bt_le_scan_stop();
 }
 
 uint64_t count_messages = 0;
@@ -274,14 +301,14 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	if (err) {
 		printk("Failed to connect to %s (%u)\n", addr, err);
 
-		bt_conn_unref(default_conn);
-		default_conn = NULL;
+		bt_conn_unref(connections.entry[current_connection_index].connection);
+		connections.entry[current_connection_index].connection = NULL;
 
 		start_scan();
 		return;
 	}
 
-	if (conn != default_conn) {
+	if (conn != connections.entry[current_connection_index].connection) {
 		return;
 	}
 
@@ -305,18 +332,18 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
 	char addr[BT_ADDR_LE_STR_LEN];
 
-	printk("Disconnect event\n");
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	if (conn != default_conn) {
+	int index = cm_get_index_with_addr(&connections, addr);
+
+	if (conn != connections.entry[index].connection) {
 		return;
 	}
 
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
 	printk("Disconnected: %s (reason 0x%02x)\n", addr, reason);
 
-	bt_conn_unref(default_conn);
-	default_conn = NULL;
+	bt_conn_unref(connections.entry[index].connection);
+	connections.entry[index].connection = NULL;
 
 	start_scan();
 }

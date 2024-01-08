@@ -25,7 +25,7 @@ int cm_remove_object_with_index(connection_map *cm, int index)
     return 0;
 }
 
-int cm_remove_object_with_addr(connection_map *cm, char addr[BT_ADDR_STR_LEN])
+int cm_remove_object_with_addr(connection_map *cm, char addr[BT_ADDR_LE_STR_LEN])
 {
     for(int i = 0; i < cm->size; i++)
     {
@@ -52,4 +52,17 @@ int cm_add_object(connection_map *cm, connection_entry entry)
     memcpy(&cm->entry[index], &entry, sizeof(connection_entry));
 
     return 0;
+}
+
+int cm_get_index_with_addr(connection_map *cm, char addr[BT_ADDR_LE_STR_LEN])
+{
+    for(int i = 0; i < cm->size; i++)
+    {
+        if(strcmp(addr, cm->entry[i].addr) == 0)
+        {
+            return i;
+        }
+    }
+
+    return -1;
 }
