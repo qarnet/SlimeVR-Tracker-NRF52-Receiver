@@ -28,9 +28,14 @@ static void start_scan(void);
 #define UUID_SLIME_VR_CHR_VAL BT_UUID_128_ENCODE(0x6fd1aa9d, 0xd1da, 0xca9f, 0x144b, 0x8118aaae7c9d)
 #define UUID_SLIME_VR_CHR BT_UUID_DECLARE_128(UUID_SLIME_VR_CHR_VAL)
 
+struct connections {
+	char addr[BT_ADDR_STR_LEN];
+	struct bt_conn *connection;
+} current_connections[16];
+
 static struct bt_conn *default_conn;
 
-int slimevr_send(const uint8_t *data, uint16_t length);
+int slimevr_send(struct bt_conn *conn, const uint8_t *data, uint16_t length);
 
 bool ad_decode(struct bt_data *data, void *user_data)
 {
@@ -86,19 +91,6 @@ BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);
 static void start_scan(void)
 {
 	int err;
-
-	struct bt_scan_init_param scan_init = {
-		.connect_if_match = 0,
-		.scan_param = BT_LE_SCAN_ACTIVE,
-		.conn_param = BT_LE_CONN_PARAM_DEFAULT
-	};
-
-	bt_scan_init(&scan_init);
-	bt_scan_cb_register(&scan_cb);
-
-	bt_scan_filter_add(BT_SCAN_FILTER_TYPE_UUID, UUID_SLIME_VR);
-
-	bt_scan_filter_enable(BT_SCAN_UUID_FILTER, false);
 
 	/* This demo doesn't require active scan */
 	err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, NULL);
@@ -173,7 +165,11 @@ void on_subscribed(struct bt_conn *conn, uint8_t err,
 	handshake[0] = 3;
 	memcpy(handshake + 1, handshake_part, sizeof(handshake_part));
 
-	slimevr_send(handshake, sizeof(handshake));
+	slimevr_send(conn, (const uint8_t *)handshake, sizeof(handshake));
+
+	k_msleep(1000);
+
+	start_scan();
 }
 
 int slimevr_subscribe(struct bt_gatt_dm *dm)
@@ -228,7 +224,7 @@ void on_write(struct bt_conn *conn, uint8_t err,
 	printk("Written\n");
 }
 
-int slimevr_send(const uint8_t *data, uint16_t length)
+int slimevr_send(struct bt_conn *conn, const uint8_t *data, uint16_t length)
 {
 	write_params.func = on_write;
 	write_params.handle = write_handle;
@@ -236,7 +232,7 @@ int slimevr_send(const uint8_t *data, uint16_t length)
 	write_params.data = data;
 	write_params.length = length;
 
-	return bt_gatt_write(default_conn, &write_params);
+	return bt_gatt_write(conn, &write_params);
 }
 
 static void discover_all_service_not_found(struct bt_conn *conn, void *ctx)
@@ -271,7 +267,7 @@ struct bt_le_conn_param conn_param = {
 	.interval_max = 6,
 	.interval_min = 6,
 	.latency = 0,
-	.timeout = 200
+	.timeout = 10
 };
 
 static void connected(struct bt_conn *conn, uint8_t err)
@@ -314,6 +310,8 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
 	char addr[BT_ADDR_LE_STR_LEN];
 
+	printk("Disconnect event\n");
+
 	if (conn != default_conn) {
 		return;
 	}
@@ -328,14 +326,22 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	start_scan();
 }
 
-BT_CONN_CB_DEFINE(conn_callbacks) = {
+struct bt_conn_cb conn_callbacks = {
 	.connected = connected,
 	.disconnected = disconnected,
 };
 
+struct bt_scan_init_param scan_init = {
+		.connect_if_match = 0,
+		.scan_param = BT_LE_SCAN_ACTIVE,
+		.conn_param = BT_LE_CONN_PARAM_DEFAULT
+	};
+
 int main(void)
 {
 	int err;
+
+	bt_conn_cb_register(&conn_callbacks);
 
 	err = bt_enable(NULL);
 	if (err) {
@@ -344,6 +350,13 @@ int main(void)
 	}
 
 	printk("Bluetooth initialized\n");
+
+	bt_scan_init(&scan_init);
+	bt_scan_cb_register(&scan_cb);
+
+	bt_scan_filter_add(BT_SCAN_FILTER_TYPE_UUID, UUID_SLIME_VR);
+
+	bt_scan_filter_enable(BT_SCAN_UUID_FILTER, false);
 
 	start_scan();
 
