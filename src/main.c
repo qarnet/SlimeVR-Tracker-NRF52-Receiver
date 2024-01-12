@@ -97,7 +97,18 @@ void scan_filter_match(struct bt_scan_device_info *device_info,
 	}
 }
 
-BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);
+void scan_filter_no_match(struct bt_scan_device_info *device_info,
+				bool connectable)
+{
+	// for(int i = 0; i < device_info->adv_data->len; i++)
+	// {
+	// 	printk("%c", device_info->adv_data->data[i]);
+	// }	
+
+	// printk("\n");
+}
+
+BT_SCAN_CB_INIT(scan_cb, scan_filter_match, scan_filter_no_match, NULL, NULL);
 
 bool already_scanning = false;
 
@@ -145,6 +156,7 @@ static uint8_t on_received(struct bt_conn *conn,
 {
 	int index = cm_get_index_with_conn(&connections, conn);
 	connections.entry[index].debug_counter++;
+	connections.entry[index].debug_data_counter += length;
 
 	if(k_uptime_get() <= timer + 1000)
 	{
@@ -160,8 +172,9 @@ static uint8_t on_received(struct bt_conn *conn,
 			continue;
 		}
 
-		printk("Messages from (%s): %llu\n", connections.entry[i].addr, connections.entry[i].debug_counter);
+		printk("Messages from (%s): %llu (%llu Bytes)\n", connections.entry[i].addr, connections.entry[i].debug_counter, connections.entry[i].debug_data_counter);
 		connections.entry[i].debug_counter = 0;
+		connections.entry[i].debug_data_counter = 0;
 	}
 	printk("=======================================\n");
 
@@ -381,9 +394,34 @@ struct bt_scan_init_param scan_init = {
 		.conn_param = BT_LE_CONN_PARAM_DEFAULT
 	};
 
+
+#include <zephyr/kernel.h>
+#include <zephyr/sys/printk.h>
+#include <zephyr/usb/usb_device.h>
+#include <zephyr/usb/usbd.h>
+#include <zephyr/drivers/uart.h>
+
+BUILD_ASSERT(DT_NODE_HAS_COMPAT(DT_CHOSEN(zephyr_console), zephyr_cdc_acm_uart),
+	     "Console device is not ACM CDC UART device");
+
+
 int main(void)
 {
 	int err;
+
+	const struct device *const dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
+	uint32_t dtr = 0;
+
+	if (usb_enable(NULL)) {
+		return 0;
+	}
+
+	/* Poll if the DTR flag was set */
+	while (!dtr) {
+		uart_line_ctrl_get(dev, UART_LINE_CTRL_DTR, &dtr);
+		/* Give CPU resources to low priority threads. */
+		k_sleep(K_MSEC(100));
+	}
 
 	bt_conn_cb_register(&conn_callbacks);
 
@@ -404,9 +442,5 @@ int main(void)
 
 	start_scan();
 
-	// while(true)
-	// {
-	// 	if(subscribed == true);
-	// }
 	return 0;
 }

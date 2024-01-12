@@ -10,6 +10,7 @@ typedef struct {
     struct bt_gatt_subscribe_params sub_params;
     struct bt_gatt_write_params write_params;
     uint64_t debug_counter;
+    uint64_t debug_data_counter;
 } connection_entry;
 
 typedef struct {
@@ -18,10 +19,10 @@ typedef struct {
 } connection_map;
 
 #define CONNECTION_MAP_INIT(name, amount) \
-    connection_entry name##entry[amount]; \
+    connection_entry name##entry[amount] = {0} ; \
     connection_map name = { \
         .entry = name##entry, \
-        .size = amount \
+        .size = amount, \
     };
 
 int cm_get_next_free_object_index(connection_map *cm);
