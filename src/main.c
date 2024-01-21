@@ -21,6 +21,8 @@
 #include <bluetooth/gatt_dm.h>
 #include <zephyr/sys/byteorder.h>
 
+#include <zephyr/net/loopback.h>
+
 #include "connectionManager.h"
 
 #define ADDR_LEN BT_ADDR_LE_STR_LEN
@@ -33,7 +35,7 @@ static bool stop_scan();
 #define UUID_SLIME_VR_CHR_VAL BT_UUID_128_ENCODE(0x6fd1aa9d, 0xd1da, 0xca9f, 0x144b, 0x8118aaae7c9d)
 #define UUID_SLIME_VR_CHR BT_UUID_DECLARE_128(UUID_SLIME_VR_CHR_VAL)
 
-CONNECTION_MAP_INIT(connections, 16)
+CONNECTION_MAP_INIT(connections, 6)
 
 int current_connection_index = -1;
 
@@ -404,7 +406,6 @@ struct bt_scan_init_param scan_init = {
 BUILD_ASSERT(DT_NODE_HAS_COMPAT(DT_CHOSEN(zephyr_console), zephyr_cdc_acm_uart),
 	     "Console device is not ACM CDC UART device");
 
-
 int main(void)
 {
 	int err;
@@ -416,14 +417,13 @@ int main(void)
 		return 0;
 	}
 
-	/* Poll if the DTR flag was set */
-	while (!dtr) {
-		uart_line_ctrl_get(dev, UART_LINE_CTRL_DTR, &dtr);
-		/* Give CPU resources to low priority threads. */
-		k_sleep(K_MSEC(100));
-	}
-
-	bt_conn_cb_register(&conn_callbacks);
+	// Don't know why this is enabled, but it stops device from working sometimes
+	// /* Poll if the DTR flag was set */
+	// while (!dtr) {
+	// 	uart_line_ctrl_get(dev, UART_LINE_CTRL_DTR, &dtr);
+	// 	/* Give CPU resources to low priority threads. */
+	// 	k_sleep(K_MSEC(100));
+	// }
 
 	err = bt_enable(NULL);
 	if (err) {
@@ -431,7 +431,10 @@ int main(void)
 		return 0;
 	}
 
+	bt_conn_cb_register(&conn_callbacks);
+
 	printk("Bluetooth initialized\n");
+	k_msleep(1000);
 
 	bt_scan_init(&scan_init);
 	bt_scan_cb_register(&scan_cb);
