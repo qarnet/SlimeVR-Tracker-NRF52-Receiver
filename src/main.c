@@ -20,6 +20,7 @@
 #include <bluetooth/scan.h>
 #include <bluetooth/gatt_dm.h>
 #include <zephyr/sys/byteorder.h>
+#include <zephyr/drivers/gpio.h>
 
 #include <zephyr/net/loopback.h>
 
@@ -406,9 +407,23 @@ struct bt_scan_init_param scan_init = {
 BUILD_ASSERT(DT_NODE_HAS_COMPAT(DT_CHOSEN(zephyr_console), zephyr_cdc_acm_uart),
 	     "Console device is not ACM CDC UART device");
 
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
+
+
 int main(void)
 {
 	int err;
+
+	if (!gpio_is_ready_dt(&led)) {
+		// return 0;
+	}
+
+	err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+	if (err < 0) {
+		// return 0;
+	}
+
+	gpio_pin_set_dt(&led, 1);
 
 	const struct device *const dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
 	uint32_t dtr = 0;
@@ -418,12 +433,12 @@ int main(void)
 	}
 
 	// Don't know why this is enabled, but it stops device from working sometimes
-	// /* Poll if the DTR flag was set */
-	// while (!dtr) {
-	// 	uart_line_ctrl_get(dev, UART_LINE_CTRL_DTR, &dtr);
-	// 	/* Give CPU resources to low priority threads. */
-	// 	k_sleep(K_MSEC(100));
-	// }
+	/* Poll if the DTR flag was set */
+	while (!dtr) {
+		uart_line_ctrl_get(dev, UART_LINE_CTRL_DTR, &dtr);
+		/* Give CPU resources to low priority threads. */
+		k_sleep(K_MSEC(100));
+	}
 
 	err = bt_enable(NULL);
 	if (err) {
@@ -444,6 +459,13 @@ int main(void)
 	bt_scan_filter_enable(BT_SCAN_UUID_FILTER, false);
 
 	start_scan();
+
+	while(true)
+	{
+		printk("Test\r\n");
+		k_msleep(1000);
+	}
+	
 
 	return 0;
 }
