@@ -13,4 +13,4 @@ target_sources(app PRIVATE
   src/connectionManager.c
 )
 
-zephyr_library_include_directories(${ZEPHYR_BASE}/samples/bluetooth)
+zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)

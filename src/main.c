@@ -21,10 +21,13 @@
 #include <bluetooth/gatt_dm.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/drivers/gpio.h>
+#include <nrf52840.h>
 
 #include <zephyr/net/loopback.h>
 
 #include "connectionManager.h"
+
+#define BOOTLOADER_MAGIC_VALUE (0xf01669ef)
 
 #define ADDR_LEN BT_ADDR_LE_STR_LEN
 
@@ -460,11 +463,11 @@ int main(void)
 
 	start_scan();
 
-	while(true)
-	{
-		printk("Test\r\n");
-		k_msleep(1000);
-	}
+	// while(true)
+	// {
+	// 	printk("Test\r\n");
+	// 	k_msleep(1000);
+	// }
 	
 
 	return 0;
