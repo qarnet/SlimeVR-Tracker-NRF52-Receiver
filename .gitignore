@@ -4,3 +4,5 @@
 
 # build
 /build*/
+bootloader_stuff/arcade_feather_nrf52840_express_bootloader-0.8.3_s140_6.1.1.zip
+bootloader_stuff/Seeed_XIAO_nRF52840_bootloader-0.6.1_s140_7.3.0.hex
