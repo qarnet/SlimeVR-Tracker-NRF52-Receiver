@@ -24,6 +24,9 @@
 #include <nrf52840.h>
 
 #include <zephyr/net/loopback.h>
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(foo, LOG_LEVEL_ERR);
 
 #include "connectionManager.h"
 
@@ -406,12 +409,113 @@ struct bt_scan_init_param scan_init = {
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/usbd.h>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/logging/log.h>
+
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_core.h>
+#include <zephyr/net/net_context.h>
+#include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/dns_resolve.h>
+
+#define DHCP_OPTION_NTP (42)
+
+static uint8_t ntp_server[4];
+
+static struct net_mgmt_event_callback mgmt_cb;
+
+static struct net_dhcpv4_option_callback dhcp_cb;
+
+static void start_dhcpv4_client(struct net_if *iface, void *user_data)
+{
+	ARG_UNUSED(user_data);
+
+	// LOG_INF("Start on %s: index=%d", net_if_get_device(iface)->name,
+	// 	net_if_get_by_iface(iface));
+	net_dhcpv4_start(iface);
+}
+
+static void handler(struct net_mgmt_event_callback *cb,
+		    uint32_t mgmt_event,
+		    struct net_if *iface)
+{
+	int i = 0;
+
+	if (mgmt_event != NET_EVENT_IPV4_ADDR_ADD) {
+		return;
+	}
+
+	for (i = 0; i < NET_IF_MAX_IPV4_ADDR; i++) {
+		char buf[NET_IPV4_ADDR_LEN];
+
+		if (iface->config.ip.ipv4->unicast[i].addr_type !=
+							NET_ADDR_DHCP) {
+			continue;
+		}
+
+		LOG_INF("   Address[%d]: %s", net_if_get_by_iface(iface),
+			net_addr_ntop(AF_INET,
+			    &iface->config.ip.ipv4->unicast[i].address.in_addr,
+						  buf, sizeof(buf)));
+		LOG_INF("    Subnet[%d]: %s", net_if_get_by_iface(iface),
+			net_addr_ntop(AF_INET,
+				       &iface->config.ip.ipv4->netmask,
+				       buf, sizeof(buf)));
+		LOG_INF("    Router[%d]: %s", net_if_get_by_iface(iface),
+			net_addr_ntop(AF_INET,
+						 &iface->config.ip.ipv4->gw,
+						 buf, sizeof(buf)));
+		LOG_INF("Lease time[%d]: %u seconds", net_if_get_by_iface(iface),
+			iface->config.dhcpv4.lease_time);
+	}
+}
+
+static void print_dhcpv4_addr(struct net_if *iface, struct net_if_addr *if_addr,
+			      void *user_data)
+{
+	bool *found = (bool *)user_data;
+	char hr_addr[NET_IPV4_ADDR_LEN];
+	struct in_addr netmask;
+
+	if (*found) {
+		return;
+	}
+
+	if (if_addr->addr_type != NET_ADDR_DHCP) {
+		return;
+	}
+
+	LOG_INF("IPv4 address: %s",
+		net_addr_ntop(AF_INET, &if_addr->address.in_addr,
+			      hr_addr, NET_IPV4_ADDR_LEN));
+	LOG_INF("Lease time: %u seconds", iface->config.dhcpv4.lease_time);
+
+	// netmask = net_if_ipv4_get_netmask_by_addr(iface,
+	// 					  &if_addr->address.in_addr);
+	// LOG_INF("Subnet: %s",
+	// 	net_addr_ntop(AF_INET, &netmask, hr_addr, NET_IPV4_ADDR_LEN));
+	// LOG_INF("Router: %s",
+	// 	net_addr_ntop(AF_INET,
+	// 		      &iface->config.ip.ipv4->gw,
+	// 		      hr_addr, NET_IPV4_ADDR_LEN));
+
+	*found = true;
+}
+
+static void option_handler(struct net_dhcpv4_option_callback *cb,
+			   size_t length,
+			   enum net_dhcpv4_msg_type msg_type,
+			   struct net_if *iface)
+{
+	char buf[NET_IPV4_ADDR_LEN];
+
+	LOG_INF("DHCP Option %d: %s", cb->option,
+		net_addr_ntop(AF_INET, cb->data, buf, sizeof(buf)));
+}
 
 BUILD_ASSERT(DT_NODE_HAS_COMPAT(DT_CHOSEN(zephyr_console), zephyr_cdc_acm_uart),
 	     "Console device is not ACM CDC UART device");
 
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
-
 
 int main(void)
 {
@@ -426,14 +530,35 @@ int main(void)
 		// return 0;
 	}
 
-	gpio_pin_set_dt(&led, 1);
-
 	const struct device *const dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
 	uint32_t dtr = 0;
 
 	if (usb_enable(NULL)) {
 		return 0;
 	}
+
+	net_mgmt_init_event_callback(&mgmt_cb, handler,
+				     NET_EVENT_IPV4_ADDR_ADD);
+	net_mgmt_add_event_callback(&mgmt_cb);
+
+	net_dhcpv4_init_option_callback(&dhcp_cb, option_handler,
+					DHCP_OPTION_NTP, ntp_server,
+					sizeof(ntp_server));
+
+	net_dhcpv4_add_option_callback(&dhcp_cb);
+
+	net_if_foreach(start_dhcpv4_client, NULL);
+
+	gpio_pin_set_dt(&led, 1);
+	
+
+	while(true)
+	{
+		LOG_ERR("HI");
+		k_msleep(500);
+	}
+
+	return 0;
 
 	// Don't know why this is enabled, but it stops device from working sometimes
 	/* Poll if the DTR flag was set */
