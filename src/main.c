@@ -25,6 +25,7 @@
 
 #include <zephyr/net/loopback.h>
 #include <zephyr/logging/log.h>
+#include "echo_server.h"
 
 LOG_MODULE_REGISTER(foo, LOG_LEVEL_ERR);
 
@@ -520,6 +521,8 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 int main(void)
 {
 	int err;
+
+	start_echo_server();
 
 	if (!gpio_is_ready_dt(&led)) {
 		// return 0;

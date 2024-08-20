@@ -11,6 +11,9 @@ project(slimevr-central)
 target_sources(app PRIVATE
   src/main.c
   src/connectionManager.c
+  src/echo_server.c
+  src/udp.c
+  src/usb.c
 )
 
 zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
